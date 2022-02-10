@@ -23,37 +23,39 @@ This code is licensed under the terms of the MIT-license.
 """
 
 from DTLN_model import DTLN_model
+from gpu_fix import fix_gpu
 import os
 
 # use the GPU with idx 0
-os.environ["CUDA_VISIBLE_DEVICES"]='0'
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 # activate this for some reproducibility
-os.environ['TF_DETERMINISTIC_OPS'] = '1'
+os.environ['TF_DETERMINISTIC_OPS'] = "1"
 
 
-
-
-
+data_prefix_directory_path = "/home/dadyatlova_1/russian_speech_denoiser/DNS-Challenge/datasets/dtln_6th_feb/"
 # path to folder containing the noisy or mixed audio training files
-path_to_train_mix = '/path/to/noisy/training/data/'
+noisy_train_directory_path = data_prefix_directory_path + "noisy_train"
 # path to folder containing the clean/speech files for training
-path_to_train_speech = '/path/to/clean/training/data/'
+clean_train_directory_path = data_prefix_directory_path + "clean_train"
 # path to folder containing the noisy or mixed audio validation data
-path_to_val_mix = '/path/to/noisy/validation/data/'
+noisy_val_directory_path = data_prefix_directory_path + "noisy_val"
 # path to folder containing the clean audio validation data
-path_to_val_speech = '/path/to/clean/validation/data/'
+clean_val_directory_path = data_prefix_directory_path + "clean_val"
+# path to the pretrained model, use None for training from scratch
+pretrained_model_path = "/home/dadyatlova_1/russian_speech_denoiser/DTLN/pretrained_model/model.h5"
 
+# solve Error: occurred when finalizing GeneratorDataset iterator:
+# Failed precondition: Python interpreter state is not initialized. The process may be terminated.
+fix_gpu()
 # name your training run
 runName = 'DTLN_model'
 # create instance of the DTLN model class
 modelTrainer = DTLN_model()
 # build the model
-modelTrainer.build_DTLN_model()
+modelTrainer.build_DTLN_model(pretrained_model_path=pretrained_model_path)
 # compile it with optimizer and cost function for training
 modelTrainer.compile_model()
 # train the model
-modelTrainer.train_model(runName, path_to_train_mix, path_to_train_speech, \
-                         path_to_val_mix, path_to_val_speech)
-
-
-
+modelTrainer.train_model(
+    runName, noisy_train_directory_path, clean_train_directory_path, noisy_val_directory_path, clean_val_directory_path
+)

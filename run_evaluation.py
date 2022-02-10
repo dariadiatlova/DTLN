@@ -118,8 +118,8 @@ if __name__ == '__main__':
     # create class instance
     modelClass = DTLN_model();
     # build the model in default configuration
-    modelClass.build_DTLN_model(norm_stft=norm_stft)
+    modelClass.build_DTLN_model(pretrained_model_path=args.model, norm_stft=norm_stft)
     # load weights of the .h5 file
-    modelClass.model.load_weights(args.model)
+    # modelClass.model.load_weights(args.model)
     # process the folder
     process_folder(modelClass.model, args.in_folder, args.out_folder)

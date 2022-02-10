@@ -33,47 +33,46 @@ class audio_generator():
     audio dataset. This audio generator only supports single channel audio files.
     '''
     
-    def __init__(self, path_to_input, path_to_s1, len_of_samples, fs, train_flag=False):
+    def __init__(self, noisy_speech_folder_path, clean_speech_folder_path, len_of_samples, fs, train_flag=False):
         '''
         Constructor of the audio generator class.
         Inputs:
-            path_to_input       path to the mixtures
-            path_to_s1          path to the target source data
-            len_of_samples      length of audio snippets in samples
-            fs                  sampling rate
-            train_flag          flag for activate shuffling of files
+            noisy_speech_folder_path       path to the mixtures
+            clean_speech_folder_path       path to the target source data
+            len_of_samples                 length of audio snippets in samples
+            fs                             sampling rate
+            train_flag                     flag for activate shuffling of files
         '''
         # set inputs to properties
-        self.path_to_input = path_to_input
-        self.path_to_s1 = path_to_s1
+        self.noisy_speech_folder_path = noisy_speech_folder_path
+        self.clean_speech_folder_path = clean_speech_folder_path
         self.len_of_samples = len_of_samples
         self.fs = fs
-        self.train_flag=train_flag
-        # count the number of samples in your data set (depending on your disk,
-        #                                               this can take some time)
+        self.train_flag = train_flag
+        self.file_names = None
+        self.total_samples = None
+        # count the number of samples in your data set (depending on your disk, this can take some time)
         self.count_samples()
         # create iterable tf.data.Dataset object
         self.create_tf_data_obj()
         
     def count_samples(self):
-        '''
-        Method to list the data of the dataset and count the number of samples. 
-        '''
-
+        """
+        Method to list the data of the dataset and count the number of samples.
+        :return: None
+        """
         # list .wav files in directory
-        self.file_names = fnmatch.filter(os.listdir(self.path_to_input), '*.wav')
+        self.file_names = fnmatch.filter(os.listdir(self.noisy_speech_folder_path), '*.wav')
         # count the number of samples contained in the dataset
         self.total_samples = 0
         for file in self.file_names:
-            info = WavInfoReader(os.path.join(self.path_to_input, file))
-            self.total_samples = self.total_samples + \
-                int(np.fix(info.data.frame_count/self.len_of_samples))
-    
-         
+            info = WavInfoReader(os.path.join(self.noisy_speech_folder_path, file))
+            self.total_samples = self.total_samples + int(np.fix(info.data.frame_count / self.len_of_samples))
+
     def create_generator(self):
-        '''
+        """
         Method to create the iterator. 
-        '''
+        """
 
         # check if training or validation
         if self.train_flag:
@@ -81,8 +80,8 @@ class audio_generator():
         # iterate over the files  
         for file in self.file_names:
             # read the audio files
-            noisy, fs_1 = sf.read(os.path.join(self.path_to_input, file))
-            speech, fs_2 = sf.read(os.path.join(self.path_to_s1, file))
+            noisy, fs_1 = sf.read(os.path.join(self.noisy_speech_folder_path, file))
+            speech, fs_2 = sf.read(os.path.join(self.clean_speech_folder_path, file))
             # check if the sampling rates are matching the specifications
             if fs_1 != self.fs or fs_2 != self.fs:
                 raise ValueError('Sampling rates do not match.')
@@ -94,36 +93,26 @@ class audio_generator():
             # iterate over the number of samples
             for idx in range(num_samples):
                 # cut the audio files in chunks
-                in_dat = noisy[int(idx*self.len_of_samples):int((idx+1)*
-                                                        self.len_of_samples)]
-                tar_dat = speech[int(idx*self.len_of_samples):int((idx+1)*
-                                                        self.len_of_samples)]
+                in_dat = noisy[int(idx*self.len_of_samples):int((idx+1) * self.len_of_samples)]
+                tar_dat = speech[int(idx*self.len_of_samples):int((idx+1) * self.len_of_samples)]
                 # yield the chunks as float32 data
                 yield in_dat.astype('float32'), tar_dat.astype('float32')
-              
 
     def create_tf_data_obj(self):
-        '''
+        """
         Method to to create the tf.data.Dataset. 
-        '''
-
+        """
         # creating the tf.data.Dataset from the iterator
-        self.tf_data_set = tf.data.Dataset.from_generator(
-                        self.create_generator,
-                        (tf.float32, tf.float32),
-                        output_shapes=(tf.TensorShape([self.len_of_samples]), \
-                                       tf.TensorShape([self.len_of_samples])),
-                        args=None
-                        )
-
-        
-                
+        self.tf_data_set = tf.data.Dataset.from_generator(self.create_generator, (tf.float32, tf.float32),
+                                                          output_shapes=(tf.TensorShape([self.len_of_samples]), \
+                                                                         tf.TensorShape([self.len_of_samples])),
+                                                          args=None)
 
 
 class DTLN_model():
-    '''
+    """
     Class to create and train the DTLN model
-    '''
+    """
     
     def __init__(self):
         '''
@@ -145,11 +134,11 @@ class DTLN_model():
         self.block_shift = 128
         self.dropout = 0.25
         self.lr = 1e-3
-        self.max_epochs = 200
+        self.max_epochs = 100
         self.encoder_size = 256
         self.eps = 1e-7
         # reset all seeds to 42 to reduce invariance between training runs
-        os.environ['PYTHONHASHSEED']=str(42)
+        os.environ['PYTHONHASHSEED'] = str(42)
         seed(42)
         np.random.seed(42)
         tf.random.set_seed(42)
@@ -158,7 +147,6 @@ class DTLN_model():
         if len(physical_devices) > 0:
             for device in physical_devices:
                 tf.config.experimental.set_memory_growth(device, enable=True)
-        
 
     @staticmethod
     def snr_cost(s_estimate, s_true):
@@ -177,24 +165,21 @@ class DTLN_model():
         loss = -10*(num / (denom))
         # returning the loss
         return loss
-        
 
     def lossWrapper(self):
         '''
         A wrapper function which returns the loss function. This is done to
         to enable additional arguments to the loss function if necessary.
         '''
-        def lossFunction(y_true,y_pred):
+        def lossFunction(y_true, y_pred):
             # calculating loss and squeezing single dimensions away
-            loss = tf.squeeze(self.cost_function(y_pred,y_true))
+            loss = tf.squeeze(self.cost_function(y_pred, y_true))
             # calculate mean over batches
             loss = tf.reduce_mean(loss)
             # return the loss
             return loss
         # returning the loss function as handle
         return lossFunction
-    
-    
 
     '''
     In the following some helper layers are defined.
@@ -319,7 +304,7 @@ class DTLN_model():
         # returning the mask and states
         return mask, out_states
 
-    def build_DTLN_model(self, norm_stft=False):
+    def build_DTLN_model(self, pretrained_model_path: str, norm_stft=False):
         '''
         Method to build and compile the DTLN model. The model takes time domain 
         batches of size (batchsize, len_in_samples) and returns enhanced clips 
@@ -333,7 +318,7 @@ class DTLN_model():
         # input layer for time signal
         time_dat = Input(batch_shape=(None, None))
         # calculate STFT
-        mag,angle = Lambda(self.stftLayer)(time_dat)
+        mag, angle = Lambda(self.stftLayer)(time_dat)
         # normalizing log magnitude stfts to get more robust against level variations
         if norm_stft:
             mag_norm = InstantLayerNormalization()(tf.math.log(mag + 1e-7))
@@ -355,13 +340,14 @@ class DTLN_model():
         # multiply encoded frames with the mask
         estimated = Multiply()([encoded_frames, mask_2]) 
         # decode the frames back to time domain
-        decoded_frames = Conv1D(self.blockLen, 1, padding='causal',use_bias=False)(estimated)
+        decoded_frames = Conv1D(self.blockLen, 1, padding='causal', use_bias=False)(estimated)
         # create waveform with overlap and add procedure
         estimated_sig = Lambda(self.overlapAddLayer)(decoded_frames)
-
-        
         # create the model
         self.model = Model(inputs=time_dat, outputs=estimated_sig)
+        # load pretrained model
+        if pretrained_model_path:
+            self.model.load_weights(pretrained_model_path)
         # show the model summary
         print(self.model.summary())
         
@@ -375,7 +361,7 @@ class DTLN_model():
         # input layer for time signal
         time_dat = Input(batch_shape=(1, self.blockLen))
         # calculate STFT
-        mag,angle = Lambda(self.fftLayer)(time_dat)
+        mag, angle = Lambda(self.fftLayer)(time_dat)
         # normalizing log magnitude stfts to get more robust against level variations
         if norm_stft:
             mag_norm = InstantLayerNormalization()(tf.math.log(mag + 1e-7))
@@ -387,7 +373,7 @@ class DTLN_model():
         # multiply mask with magnitude
         estimated_mag = Multiply()([mag, mask_1])
         # transform frames back to time domain
-        estimated_frames_1 = Lambda(self.ifftLayer)([estimated_mag,angle])
+        estimated_frames_1 = Lambda(self.ifftLayer)([estimated_mag, angle])
         # encode time domain frames to feature domain
         encoded_frames = Conv1D(self.encoder_size,1,strides=1,use_bias=False)(estimated_frames_1)
         # normalize the input to the separation kernel
@@ -515,26 +501,24 @@ class DTLN_model():
               f.write(tflite_model)
               
         print('TF lite conversion complete!')
-        
-    
+
     def train_model(self, runName, path_to_train_mix, path_to_train_speech, \
                     path_to_val_mix, path_to_val_speech):
-        '''
-        Method to train the DTLN model. 
-        '''
+        """
+            Method to train the DTLN model.
+        """
         
         # create save path if not existent
-        savePath = './models_'+ runName+'/' 
+        savePath = './models_' + runName + '/'
         if not os.path.exists(savePath):
             os.makedirs(savePath)
         # create log file writer
-        csv_logger = CSVLogger(savePath+ 'training_' +runName+ '.log')
+        csv_logger = CSVLogger(savePath + 'training_' + runName + '.log')
         # create callback for the adaptive learning rate
-        reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5,
-                              patience=3, min_lr=10**(-10), cooldown=1)
+        reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=3, min_lr=10**(-10), cooldown=1)
         # create callback for early stopping
-        early_stopping = EarlyStopping(monitor='val_loss', min_delta=0, 
-            patience=10, verbose=0, mode='auto', baseline=None)
+        early_stopping = EarlyStopping(
+            monitor='val_loss', min_delta=0, patience=10, verbose=0, mode='auto', baseline=None)
         # create model check pointer to save the best model
         checkpointer = ModelCheckpoint(savePath+runName+'.h5',
                                        monitor='val_loss',
@@ -567,21 +551,21 @@ class DTLN_model():
         steps_val = generator_val.total_samples//self.batchsize
         # start the training of the model
         self.model.fit(
-            x=dataset, 
-            batch_size=None,
-            steps_per_epoch=steps_train, 
-            epochs=self.max_epochs,
-            verbose=1,
-            validation_data=dataset_val,
-            validation_steps=steps_val, 
-            callbacks=[checkpointer, reduce_lr, csv_logger, early_stopping],
-            max_queue_size=50,
-            workers=4,
-            use_multiprocessing=True)
+                        x=dataset,
+                        batch_size=None,
+                        steps_per_epoch=steps_train,
+                        epochs=self.max_epochs,
+                        verbose=1,
+                        validation_data=dataset_val,
+                        validation_steps=steps_val,
+                        callbacks=[checkpointer, reduce_lr, csv_logger, early_stopping],
+                        max_queue_size=50,
+                        workers=4,
+                        use_multiprocessing=True
+        )
         # clear out garbage
         tf.keras.backend.clear_session()
 
-    
 
 class InstantLayerNormalization(Layer):
     '''
