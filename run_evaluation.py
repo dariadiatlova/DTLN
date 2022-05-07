@@ -26,7 +26,6 @@ import argparse
 from DTLN_model import DTLN_model
 
 
-
 def process_file(model, audio_file_name, out_file_name):
     '''
     Funtion to read an audio file, rocess it by the network and write the 
@@ -97,8 +96,6 @@ def process_folder(model, folder_name, new_folder_name):
                      os.path.join(new_directories[idx],file_names[idx]))
         print(file_names[idx] + ' processed successfully!')
     
-           
-
 
 if __name__ == '__main__':
     # arguement parser for running directly from the command line

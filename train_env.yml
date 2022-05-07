@@ -1,4 +1,4 @@
-name: train_env
+name: dtln
 channels:
   - conda-forge
   - defaults
